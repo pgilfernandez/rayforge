@@ -522,9 +522,46 @@ class WorkPiece(DocItem):
         kwargs = self._build_renderer_kwargs(ctx.renderer, ctx.metadata)
 
         # 4. Render
-        raw_image = ctx.renderer.render_base_image(
-            final_data, render_w, render_h, **kwargs
-        )
+        try:
+            raw_image = ctx.renderer.render_base_image(
+                final_data, render_w, render_h, **kwargs
+            )
+        except Exception as exc:
+            logger.warning(
+                "Primary renderer failed (%s). Falling back to ops renderer.",
+                exc,
+                exc_info=True,
+            )
+            raw_image = None
+
+        if not raw_image and ctx.renderer.__class__.__name__ in (
+            "SvgRenderer",
+            "OpsRenderer",
+        ):
+            # Fallback: render directly from geometry to ensure SVGs without
+            # svgload_buffer still display.
+            logger.debug(
+                f"Attempting OpsRenderer fallback for {ctx.renderer.__class__.__name__}"
+            )
+            try:
+                from rayforge.image.ops_renderer import OPS_RENDERER
+
+                raw_image = OPS_RENDERER.render_base_image(
+                    b"",
+                    render_w,
+                    render_h,
+                    boundaries=self.boundaries,
+                )
+                logger.debug(
+                    f"OpsRenderer fallback succeeded: {raw_image.width if raw_image else None}x{raw_image.height if raw_image else None}"
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Ops renderer fallback failed: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raw_image = None
         if not raw_image:
             return None
 
