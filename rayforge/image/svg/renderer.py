@@ -1,7 +1,10 @@
+import logging
 import warnings
 from typing import Optional, TYPE_CHECKING
 from xml.etree import ElementTree as ET
 from ..base_renderer import Renderer
+
+logger = logging.getLogger(__name__)
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
@@ -35,7 +38,8 @@ class SvgRenderer(Renderer):
             root.set("preserveAspectRatio", "none")
 
             return pyvips.Image.svgload_buffer(ET.tostring(root))
-        except (pyvips.Error, ET.ParseError, ValueError, TypeError):
+        except (pyvips.Error, ET.ParseError, ValueError, TypeError) as e:
+            logger.error(f"Failed to render SVG: {e}", exc_info=True)
             return None
 
 
