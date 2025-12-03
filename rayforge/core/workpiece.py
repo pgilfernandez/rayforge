@@ -705,7 +705,8 @@ class WorkPiece(DocItem):
                 return None
 
         # 2. Apply Mask
-        # We skip masking for Vector sources because they already render with
+        pre_mask_image = processed_image
+        # We skip masking for vector sources because they already render with
         # correct transparency, and masking with vector geometry (which can
         # be open lines with zero area) would incorrectly hide the content.
         is_vector = False
@@ -726,6 +727,19 @@ class WorkPiece(DocItem):
                 if not processed_image:
                     return None
 
+            # If masking wiped everything out (e.g., coordinate mismatch),
+            # fall back to the unmasked image for preview purposes.
+            try:
+                alpha = processed_image[3]
+                if alpha.max() <= 0:
+                    logger.debug(
+                        "Mask produced empty alpha; using unmasked image "
+                        "for preview."
+                    )
+                    processed_image = pre_mask_image
+            except Exception:
+                pass
+
         # 3. Final Resize Check
         if (
             processed_image.width != target_w
@@ -737,6 +751,17 @@ class WorkPiece(DocItem):
                 processed_image = processed_image.resize(
                     h_scale, vscale=v_scale
                 )
+
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                wp_uid = getattr(self, "uid", "workpiece")
+                debug_path = (
+                    f"/tmp/rayforge_render_{wp_uid}_{target_w}x{target_h}.png"
+                )
+                processed_image.write_to_file(debug_path)
+                logger.debug("Saved debug render to %s", debug_path)
+            except Exception as exc:
+                logger.debug("Failed to save debug render: %s", exc)
 
         return processed_image
 
