@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional, TYPE_CHECKING, Dict, Tuple, cast, List
 import cairo
 from concurrent.futures import Future
@@ -594,6 +595,40 @@ class WorkPieceElement(CanvasElement):
         # Fetch and cache the final artifact, making it available to all paths.
         self._artifact_cache[step.uid] = artifact
 
+        if logger.isEnabledFor(logging.DEBUG) and artifact and artifact.vertex_data:
+            v_data = artifact.vertex_data
+            counts = (
+                v_data.powered_vertices.size,
+                v_data.travel_vertices.size,
+                v_data.zero_power_vertices.size,
+            )
+            bounds = None
+            try:
+                stacks = [
+                    v
+                    for v in (
+                        v_data.powered_vertices,
+                        v_data.travel_vertices,
+                        v_data.zero_power_vertices,
+                    )
+                    if v.size > 0
+                ]
+                if stacks:
+                    v_stack = np.vstack(stacks)
+                    v_min = np.min(v_stack, axis=0)
+                    v_max = np.max(v_stack, axis=0)
+                    bounds = (v_min.tolist(), v_max.tolist())
+            except Exception as exc:  # pragma: no cover - debug only
+                logger.debug("Failed to compute vertex bounds: %s", exc)
+            logger.debug(
+                "Artifact vertices for step '%s': counts powered/travel/zero=%s, bounds=%s, gen_size=%s, source_dims=%s",
+                step.uid,
+                counts,
+                bounds,
+                artifact.generation_size,
+                artifact.source_dimensions,
+            )
+
         # Asynchronously prepare texture surface if it exists
         if artifact and artifact.texture_data:
             if future := self._ops_render_futures.pop(step.uid, None):
@@ -829,6 +864,27 @@ class WorkPieceElement(CanvasElement):
         self._draw_vertices_to_context(
             artifact.vertex_data, ctx, (1.0, 1.0), drawable_height_mm
         )
+
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                img_w_px = max(1, int(math.ceil(union_w)))
+                img_h_px = max(1, int(math.ceil(union_h)))
+                debug_img = cairo.ImageSurface(
+                    cairo.FORMAT_ARGB32, img_w_px, img_h_px
+                )
+                debug_ctx = cairo.Context(debug_img)
+                debug_ctx.translate(-extents[0], -extents[1])
+                debug_ctx.set_source_surface(surface, 0, 0)
+                debug_ctx.paint()
+                debug_path = (
+                    f"/tmp/rayforge_ops_{step.uid}_{img_w_px}x{img_h_px}.png"
+                )
+                debug_img.write_to_png(debug_path)
+                logger.debug(
+                    "Saved ops recording debug PNG to %s", debug_path
+                )
+            except Exception as exc:  # pragma: no cover - debug helper
+                logger.debug("Failed to save ops recording debug PNG: %s", exc)
 
         return step.uid, surface, generation_id
 
