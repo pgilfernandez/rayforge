@@ -62,7 +62,13 @@ def _get_margins_from_data(
         if not root.get("viewBox"):
             root.set("viewBox", f"0 0 {orig_w} {orig_h}")
 
-        img = pyvips.Image.svgload_buffer(ET.tostring(root))
+        try:
+            svg_loader = getattr(pyvips.Image, "svgload_buffer")
+        except Exception:
+            # Libvips compiled without SVG loader; skip trimming.
+            return 0.0, 0.0, 0.0, 0.0
+
+        img = svg_loader(ET.tostring(root))
         if img.bands < 4:
             img = img.bandjoin(255)  # Ensure alpha channel for trimming
 
@@ -83,7 +89,13 @@ def _get_margins_from_data(
             (render_w - (left + w)) / render_w,
             (render_h - (top + h)) / render_h,
         )
-    except (pyvips.Error, ET.ParseError, ValueError):
+    except (
+        pyvips.Error,
+        ET.ParseError,
+        ValueError,
+        AttributeError,
+        ModuleNotFoundError,
+    ):
         # Return zero margins if SVG is invalid or processing fails
         return 0.0, 0.0, 0.0, 0.0
 

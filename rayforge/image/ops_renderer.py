@@ -79,6 +79,8 @@ class OpsRenderer(Renderer):
 
         # Create a simple ColorSet with black cut color
         cut_lut = np.zeros((256, 4))
+        cut_lut[:, 0] = 1.0  # Magenta: red
+        cut_lut[:, 2] = 1.0  # Magenta: blue
         cut_lut[:, 3] = 1.0  # Full alpha
 
         colors = ColorSet(

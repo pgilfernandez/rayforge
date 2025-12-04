@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Optional, TYPE_CHECKING, Dict, Tuple, cast, List
 import cairo
 from concurrent.futures import Future
@@ -652,6 +653,40 @@ class WorkPieceElement(CanvasElement):
         # Fetch and cache the final artifact, making it available to all paths.
         self._artifact_cache[step.uid] = artifact
         self._update_model_view_cache()
+
+        if logger.isEnabledFor(logging.DEBUG) and artifact and artifact.vertex_data:
+            v_data = artifact.vertex_data
+            counts = (
+                v_data.powered_vertices.size,
+                v_data.travel_vertices.size,
+                v_data.zero_power_vertices.size,
+            )
+            bounds = None
+            try:
+                stacks = [
+                    v
+                    for v in (
+                        v_data.powered_vertices,
+                        v_data.travel_vertices,
+                        v_data.zero_power_vertices,
+                    )
+                    if v.size > 0
+                ]
+                if stacks:
+                    v_stack = np.vstack(stacks)
+                    v_min = np.min(v_stack, axis=0)
+                    v_max = np.max(v_stack, axis=0)
+                    bounds = (v_min.tolist(), v_max.tolist())
+            except Exception as exc:  # pragma: no cover - debug only
+                logger.debug("Failed to compute vertex bounds: %s", exc)
+            logger.debug(
+                "Artifact vertices for step '%s': counts powered/travel/zero=%s, bounds=%s, gen_size=%s, source_dims=%s",
+                step.uid,
+                counts,
+                bounds,
+                artifact.generation_size,
+                artifact.source_dimensions,
+            )
 
         # Asynchronously prepare texture surface if it exists
         if artifact and artifact.texture_data:

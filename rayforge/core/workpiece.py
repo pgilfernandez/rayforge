@@ -705,9 +705,9 @@ class WorkPiece(DocItem):
                 return None
 
         # 2. Apply Mask
-        # We skip masking for Vector sources because they already render with
-        # correct transparency, and masking with vector geometry (which can
-        # be open lines with zero area) would incorrectly hide the content.
+        # We skip masking for vector sources because they already render with
+        # correct transparency, and masking with vector geometry (which can be
+        # open lines with zero area) would incorrectly hide the content.
         is_vector = False
         if self.source and self.source.metadata.get("is_vector"):
             is_vector = True
@@ -718,6 +718,7 @@ class WorkPiece(DocItem):
             is_vector = True
 
         if not is_vector:
+            pre_mask_image = processed_image
             mask_geo = self._boundaries_y_down
             if mask_geo and not mask_geo.is_empty():
                 processed_image = image_util.apply_mask_to_vips_image(
@@ -725,6 +726,19 @@ class WorkPiece(DocItem):
                 )
                 if not processed_image:
                     return None
+
+            # If masking wiped everything out (e.g., coordinate mismatch),
+            # fall back to the unmasked image for preview purposes.
+            try:
+                alpha = processed_image[3]
+                if alpha.max() <= 0:
+                    logger.debug(
+                        "Mask produced empty alpha; using unmasked image "
+                        "for preview."
+                    )
+                    processed_image = pre_mask_image
+            except Exception:
+                pass
 
         # 3. Final Resize Check
         if (
@@ -774,9 +788,46 @@ class WorkPiece(DocItem):
         kwargs = self._build_renderer_kwargs(ctx.renderer, ctx.metadata)
 
         # 4. Render
-        raw_image = ctx.renderer.render_base_image(
-            final_data, render_w, render_h, **kwargs
-        )
+        try:
+            raw_image = ctx.renderer.render_base_image(
+                final_data, render_w, render_h, **kwargs
+            )
+        except Exception as exc:
+            logger.warning(
+                "Primary renderer failed (%s). Falling back to ops renderer.",
+                exc,
+                exc_info=True,
+            )
+            raw_image = None
+
+        if not raw_image and ctx.renderer.__class__.__name__ in (
+            "SvgRenderer",
+            "OpsRenderer",
+        ):
+            # Fallback: render directly from geometry to ensure SVGs without
+            # svgload_buffer still display.
+            logger.debug(
+                f"Attempting OpsRenderer fallback for {ctx.renderer.__class__.__name__}"
+            )
+            try:
+                from rayforge.image.ops_renderer import OPS_RENDERER
+
+                raw_image = OPS_RENDERER.render_base_image(
+                    b"",
+                    render_w,
+                    render_h,
+                    boundaries=self.boundaries,
+                )
+                logger.debug(
+                    f"OpsRenderer fallback succeeded: {raw_image.width if raw_image else None}x{raw_image.height if raw_image else None}"
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Ops renderer fallback failed: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raw_image = None
         if not raw_image:
             logger.warning(f"WP {self.uid[:8]}: Renderer returned None.")
             return None

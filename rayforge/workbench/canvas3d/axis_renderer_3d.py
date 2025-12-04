@@ -178,7 +178,9 @@ class AxisRenderer3D(BaseRenderer):
         GL.glDrawArrays(GL.GL_LINES, 0, self.grid_vertex_count)
 
         line_shader.set_vec4("uColor", self.axis_color)
-        GL.glLineWidth(2.0)
+        # Core profile drivers (e.g., macOS) often clamp line width to 1.0.
+        # Using a wider value triggers GL_INVALID_VALUE and aborts rendering.
+        GL.glLineWidth(1.0)
         GL.glBindVertexArray(self.axes_vao)
         GL.glDrawArrays(GL.GL_LINES, 0, self.axes_vertex_count)
 

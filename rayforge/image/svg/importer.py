@@ -68,6 +68,15 @@ class SvgImporter(Importer):
             self._populate_metadata(source)
             items = self._get_doc_items_direct(source)
 
+            # If direct import failed, fall back to tracing to ensure
+            # the user at least sees something.
+            if not items:
+                logger.warning(
+                    "Direct SVG import produced no items; falling back to "
+                    "traced import."
+                )
+                items = self._get_doc_items_from_trace(source, TraceSpec())
+
         if not items:
             return None
 
@@ -162,9 +171,7 @@ class SvgImporter(Importer):
             self.source_file.stem,
         )
 
-    def _get_doc_items_direct(
-        self, source: SourceAsset
-    ) -> Optional[List[DocItem]]:
+    def _get_doc_items_direct(self, source: SourceAsset) -> Optional[List[DocItem]]:
         """
         Orchestrates the direct parsing of SVG data into DocItems.
         """
@@ -202,8 +209,15 @@ class SvgImporter(Importer):
             return self._get_doc_items_from_trace(source, TraceSpec())
         width_px, height_px = pixel_dims
 
-        # 5. Normalize geometry to a 0-1 unit square (Y-down).
-        self._normalize_geometry(geo, width_px, height_px)
+        # 5. Normalize geometry into physical millimeter space so it renders
+        # with the expected size in the canvas.
+        self._normalize_geometry(
+            geo,
+            width_px,
+            height_px,
+            final_width_mm,
+            final_height_mm,
+        )
 
         # 6. Create the final workpiece.
         wp = self._create_workpiece(
@@ -243,12 +257,8 @@ class SvgImporter(Importer):
         if svg.width is None or svg.height is None:
             return None
 
-        width_px = (
-            svg.width.px if hasattr(svg.width, "px") else float(svg.width)
-        )
-        height_px = (
-            svg.height.px if hasattr(svg.height, "px") else float(svg.height)
-        )
+        width_px = svg.width.px if hasattr(svg.width, "px") else float(svg.width)
+        height_px = svg.height.px if hasattr(svg.height, "px") else float(svg.height)
 
         if width_px <= 1e-9 or height_px <= 1e-9:
             return None
@@ -373,16 +383,37 @@ class SvgImporter(Importer):
                 geo.line_to(float(p.x), float(p.y))
 
     def _normalize_geometry(
-        self, geo: Geometry, width_px: float, height_px: float
+        self,
+        geo: Geometry,
+        width_px: float,
+        height_px: float,
+        width_mm: float,
+        height_mm: float,
     ) -> None:
         """
-        Normalizes geometry to a 0-1 unit box in a Y-down coordinate system.
+        Scales geometry into a normalized, Y-down coordinate system.
+
+        The geometry is first converted from pixel to millimeter space and
+        then normalized into a 0-1 box so that downstream consumers can apply
+        physical sizing via the workpiece transform without double-scaling.
         """
-        # Normalize from pixel space to a (0,0)-(1,1) unit box.
-        # Since SVG coordinates are already Y-down, we don't need to flip.
-        if width_px > 0 and height_px > 0:
-            norm_matrix = Matrix.scale(1.0 / width_px, 1.0 / height_px)
-            geo.transform(norm_matrix.to_4x4_numpy())
+        if (
+            width_px <= 0
+            or height_px <= 0
+            or width_mm <= 0
+            or height_mm <= 0
+        ):
+            return
+
+        scale_x = width_mm / width_px
+        scale_y = height_mm / height_px
+        geo.transform(Matrix.scale(scale_x, scale_y).to_4x4_numpy())
+
+        # Normalize to page coordinates (origin at 0,0; scale by page size).
+        if width_mm > 1e-9 and height_mm > 1e-9:
+            geo.transform(
+                Matrix.scale(1.0 / width_mm, 1.0 / height_mm).to_4x4_numpy()
+            )
 
     def _create_workpiece(
         self,
@@ -405,7 +436,5 @@ class SvgImporter(Importer):
         wp.natural_height_mm = height_mm
         wp.set_size(width_mm, height_mm)
         wp.pos = (0, 0)
-        logger.info(
-            f"Workpiece set size: {width_mm:.3f}mm x {height_mm:.3f}mm"
-        )
+        logger.info(f"Workpiece set size: {width_mm:.3f}mm x {height_mm:.3f}mm")
         return wp
