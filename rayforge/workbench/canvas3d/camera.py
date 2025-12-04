@@ -209,13 +209,9 @@ class Camera:
         )
         self.target = np.array([center_x, center_y, 0.0], dtype=np.float64)
 
-        # For a Y-down view, the camera's "up" must point along the world's
-        # negative Y axis so that the view is not upside-down.
-        self.up = (
-            np.array([0.0, -1.0, 0.0], dtype=np.float64)
-            if y_down
-            else np.array([0.0, 1.0, 0.0], dtype=np.float64)
-        )
+        # Keep the camera's up aligned to +Y; scene transforms handle axis
+        # orientation differences.
+        self.up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
         # A top-down view should be orthographic, not perspective.
 
     def set_front_view(self, world_width: float, world_depth: float):

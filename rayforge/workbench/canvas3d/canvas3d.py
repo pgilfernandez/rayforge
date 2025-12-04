@@ -224,17 +224,6 @@ class Canvas3D(Gtk.GLArea):
         self._color_set: Optional[ColorSet] = None
         self._theme_is_dirty = True
 
-        if self.y_down:
-            # This matrix transforms from a Y-up coordinate system (used by
-            # the Ops data) to a Y-down visual representation. It scales Y by
-            # -1 and then translates by the depth of the bed, effectively
-            # moving the origin from bottom-left to top-left.
-            translate_mat = np.identity(4, dtype=np.float32)
-            translate_mat[1, 3] = self.depth_mm
-            scale_mat = np.identity(4, dtype=np.float32)
-            scale_mat[1, 1] = -1.0
-            self._model_matrix = translate_mat @ scale_mat
-
         # State for interactions
         self._last_pan_offset: Optional[Tuple[float, float]] = None
         self._rotation_pivot: Optional[np.ndarray] = None
