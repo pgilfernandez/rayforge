@@ -7,10 +7,7 @@ Registers producers and actions with the main application.
 import gettext
 from pathlib import Path
 
-from gi.repository import Gio
-
 from rayforge.core.hooks import hookimpl
-from rayforge.ui_gtk.action_registry import MenuPlacement
 from .producers import (
     ContourProducer,
     FrameProducer,
@@ -25,7 +22,6 @@ from .steps import (
     MaterialTestStep,
     ShrinkWrapStep,
 )
-from .commands import MaterialTestCmd
 
 _localedir = Path(__file__).parent.parent / "locale"
 _t = gettext.translation(
@@ -66,12 +62,18 @@ def register_steps(step_registry):
 @hookimpl
 def register_commands(command_registry):
     """Register editor command handlers."""
+    from .commands import MaterialTestCmd
+
     command_registry.register("material_test", MaterialTestCmd, ADDON_NAME)
 
 
 @hookimpl
 def register_actions(action_registry):
     """Register actions with menu placement."""
+    from gi.repository import Gio
+
+    from rayforge.ui_gtk.action_registry import MenuPlacement
+
     action = Gio.SimpleAction.new("material_test", None)
 
     def on_activate(action, param):
